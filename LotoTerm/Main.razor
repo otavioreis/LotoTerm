@@ -1,0 +1,143 @@
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@using RazorConsole.Components
+@using Spectre.Console
+@using LotoTerm.Models
+@using LotoTerm.Games
+
+
+<Rows>
+    <Panel Title="Gerador de Apostas Caixa">
+        <Columns>
+            <!-- Coluna 1: jogo -->
+            <Rows>
+                <Markup Content="Jogo:" Decoration="Decoration.Bold" />
+                <Select Options="@GameOptions"
+                        @bind-Value="SelectedGame"
+                        OnSelected="OnGameSelected"
+                        Placeholder="Selecione o jogo"
+                        Expand="true" />
+            </Rows>
+
+            <!-- Coluna 2: quantidade -->
+            <Rows>
+                <Markup Content="Quantidade de apostas:" Decoration="Decoration.Bold" />
+                <TextInput Value="@QuantityText"
+                           ValueChanged="OnQuantityChanged"
+                           Expand="true" />
+            </Rows>
+
+            <!-- Coluna 3: ações -->
+            <Rows>
+                <Markup Content="Ações:" Decoration="Decoration.Bold" />
+                <TextButton Content="Gerar" OnClick="Generate" />
+            </Rows>
+        </Columns>
+    </Panel>
+
+    @if (!string.IsNullOrWhiteSpace(LastError))
+    {
+        <Panel Title="Aviso" BorderColor="Color.Red">
+            <Markup Content="@($"{LastError}")" />
+        </Panel>
+    }
+
+    <Panel Title="Descrição do jogo selecionado" BorderColor="Color.Orange1">
+        <Markup Content="@SelectedDescription"  />
+    </Panel>
+
+    @* Resultados *@
+    @{
+        var border = Tickets.Count == 0 ? Color.Grey : Color.Green;
+    }
+    <Panel Title="Resultados" BorderColor="@border">
+        @if (Tickets.Count == 0)
+        {
+            <Markup Content="Nenhuma aposta gerada ainda." />
+        }
+        else
+        {
+            <Table Expand="true">
+                <thead>
+                    <tr>
+                        <th data-align="right">#</th>
+                        <th data-align="left">Jogo</th>
+                        <th data-align="left">Aposta</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var (i, t) in Tickets.Select((t, i) => (i + 1, t)))
+                    {
+                        <tr>
+                            <td>@i</td>
+                            <td>@SelectedGame</td>
+                            <td>@t</td>
+                        </tr>
+                    }
+                </tbody>
+            </Table>
+        }
+    </Panel>
+
+
+</Rows>
+
+@code {
+    private readonly (string Key, IGame Game)[] _games = GameCatalog.All().ToArray();
+
+    private string[] GameOptions => _games.Select(g => g.Game.Name).ToArray();
+
+    // valor selecionado pelo Select (bind bidirecional)
+    private string? SelectedGame { get; set; }
+
+    private string QuantityText = "";
+    private string LastError = string.Empty;
+    private List<string> Tickets = new();
+
+    private string SelectedDescription =>
+        _games.FirstOrDefault(g => g.Game.Name == SelectedGame).Game?.Description
+        ?? "Selecione um jogo.";
+
+    protected override void OnInitialized()
+    {
+        // garante valor inicial, senão o Select mostra a 1ª opção mas não define Value
+        SelectedGame = GameOptions.FirstOrDefault();
+    }
+
+    private void OnQuantityChanged(string text) => QuantityText = text;
+
+    protected void OnGameSelected(string? newValue)
+    {
+        SelectedGame = newValue;
+        Regenerate(); // gera imediatamente ao trocar o jogo
+    }
+
+    protected void Generate() => Regenerate();
+
+    private void Regenerate()
+    {
+        LastError = string.Empty;
+        Tickets.Clear();
+
+        SelectedGame ??= GameOptions.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(SelectedGame))
+        {
+            LastError = "Selecione um jogo.";
+            StateHasChanged();
+            return;
+        }
+
+        if (!int.TryParse(QuantityText, out var q) || q < 1 || q > 200)
+        {
+            LastError = "Informe uma quantidade entre 1 e 200.";
+            StateHasChanged();
+            return;
+        }
+
+        var game = _games.First(g => g.Game.Name == SelectedGame).Game;
+        for (int i = 0; i < q; i++)
+            Tickets.Add(string.Join(" ", game.GenerateTicket(Random.Shared)));
+
+        StateHasChanged();
+    }
+}
